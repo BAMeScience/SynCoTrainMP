@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "syncotrainmp"
 version = "0.1.0"
-description = "Co-Training for Crystal Synthesizability Prediction"
+description = "PU-Learning with Co-Training of SchNet and ALIGNN for Crystal Synthesizability Prediction"
 authors = [
     {name = "Sasan AmariAmir"},
     {name = "Philipp Benner"}

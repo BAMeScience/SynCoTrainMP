@@ -25,4 +25,5 @@ syncotrainmp_pu_alignn = "syncotrainmp.pu_alignn_main:main"
 syncotrainmp_pu_schnet = "syncotrainmp.pu_schnet_main:main"
 
 [tool.setuptools.packages.find]
-where = ["syncotrainmp"]
+where = ["."]
+include = ["syncotrainmp"]

@@ -23,7 +23,7 @@ from syncotrainmp.pu_schnet.pu_learn import int2metric
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Semi-Supervised ML for Synthesizability Prediction"
+        description="SynCoTrainMP SchNet Step"
     )
     parser.add_argument("--experiment", default="schnet0", help="Name of the experiment and config files.")
     parser.add_argument("--ehull015", type=str_to_bool, default=False, help="Use 0.015 eV cutoff for stability.")
@@ -34,10 +34,26 @@ def parse_arguments():
 
 
 def initialize_environment(args):
+    """
+    Sets the environment variable for GPU configuration based on the provided GPU ID.
+
+    Args:
+        args (argparse.Namespace): Parsed arguments containing the GPU ID to set.
+    """
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
 
 def load_configuration(args, config_path='syncotrainmp/pu_schnet/schnet_configs/pu_config_schnetpack.json'):
+    """
+    Loads configuration settings for the PU-SchNet model from a JSON file.
+
+    Args:
+        args (argparse.Namespace): Parsed arguments containing the starting iteration.
+        config_path (str): Path to the JSON configuration file.
+
+    Returns:
+        dict: Configuration dictionary with updated start iteration.
+    """
     with open(config_path, "r") as read_file:
         config = json.load(read_file)
 
@@ -47,7 +63,16 @@ def load_configuration(args, config_path='syncotrainmp/pu_schnet/schnet_configs/
 
 
 def load_crysdf(cs):
+    """
+    Loads the crystal dataset for synthesizability prediction, with target properties reshaped 
+    for model compatibility.
 
+    Args:
+        cs (dict): Dictionary with configuration settings including properties and target paths.
+
+    Returns:
+        pandas.DataFrame: DataFrame containing crystal structures and associated targets.
+    """
     prop = cs["prop"]
     TARGET = cs["TARGET"]
 
@@ -60,6 +85,17 @@ def load_crysdf(cs):
 
 
 def get_res_dir(args, config, cs):
+    """
+    Constructs the directory paths for storing experiment results and checkpoints.
+
+    Args:
+        args (argparse.Namespace): Parsed arguments with experiment settings.
+        config (dict): Configuration dictionary with directory paths.
+        cs (dict): Configuration settings including data prefix.
+
+    Returns:
+        tuple: Paths for result directory and save directory.
+    """
     save_dir = os.path.join(config["schnetDirectory"], f'PUOutput_{cs["dataPrefix"]}{args.experiment}')
     if args.ehull015:
         save_dir = os.path.join(config["schnetDirectory"], f'PUehull015_{args.experiment}')
@@ -69,7 +105,21 @@ def get_res_dir(args, config, cs):
 
 
 def create_model(prop, cutoff=5, n_rbf=30, n_atom_basis=64, n_filters=64, n_interactions=3, lr=1e-3):
+    """
+    Creates and initializes the PU-SchNet model for synthesizability prediction.
 
+    Args:
+        prop (str): Property to be predicted.
+        cutoff (float): Cutoff distance for interatomic interactions.
+        n_rbf (int): Number of radial basis functions.
+        n_atom_basis (int): Size of atom embedding space.
+        n_filters (int): Number of filters in interaction blocks.
+        n_interactions (int): Number of interaction blocks.
+        lr (float): Learning rate for the optimizer.
+
+    Returns:
+        spk.task.AtomisticTask: Configured model for training and prediction.
+    """
     pairwise_distance = spk.atomistic.PairwiseDistances()
     radial_basis = spk.nn.GaussianRBF(n_rbf=n_rbf, cutoff=cutoff)
 
@@ -122,7 +172,18 @@ def create_model(prop, cutoff=5, n_rbf=30, n_atom_basis=64, n_filters=64, n_inte
 
 
 def create_trainer(config, cs, save_dir, save_it_dir):
+    """
+    Sets up the PyTorch Lightning Trainer with early stopping, model checkpointing, and TensorBoard logging.
 
+    Args:
+        config (dict): Configuration settings for training.
+        cs (dict): Configuration settings including property to be predicted.
+        save_dir (str): Directory for saving training logs and checkpoints.
+        save_it_dir (str): Directory for saving iteration-specific results.
+
+    Returns:
+        pl.Trainer: Configured PyTorch Lightning Trainer.
+    """
     # This doesn't work when no test data is given.
     early_stopping = EarlyStopping(
         verbose=2,
@@ -154,7 +215,27 @@ def create_trainer(config, cs, save_dir, save_it_dir):
 
 
 def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff):
+    """
+    Prepares the training and test datasets for each iteration, including data shuffling and 
+    splitting into training, validation, and test sets.
 
+    Args:
+        it (int): Current iteration number.
+        config (dict): Configuration settings for training.
+        cs (dict): Configuration settings for the dataset.
+        crysdf (pandas.DataFrame): DataFrame containing crystal structures and targets.
+        trainDataPath (str): Path to save training dataset.
+        testDatapath (str): Path to save test dataset.
+        splitFilestring (str): String representing the split configuration.
+        split_id_dir_path (str): Path to the split ID files.
+        res_dir (str): Path to save results.
+        save_it_dir (str): Directory for saving iteration-specific files.
+        bestModelPath (str): Path to save the best model.
+        cutoff (float): Cutoff distance for neighbor interactions.
+
+    Returns:
+        tuple: Data loaders for training (crysData) and testing (crysTest).
+    """
     prop = cs["prop"]
     TARGET = cs["TARGET"]
 
@@ -250,7 +331,22 @@ def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, spl
 
 
 def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
+    """
+    Runs a single iteration of the PU-SchNet training and prediction, including data loading, 
+    training, and prediction on the test set.
 
+    Args:
+        it (int): Current iteration number.
+        args (argparse.Namespace): Parsed arguments with experiment settings.
+        config (dict): Configuration dictionary.
+        cs (dict): Configuration settings for the dataset.
+        crysdf (pandas.DataFrame): DataFrame containing crystal structures and targets.
+        start_time (float): Start time for tracking total elapsed time.
+        cutoff (float): Cutoff distance for interatomic interactions.
+
+    Returns:
+        pandas.DataFrame: DataFrame containing the iteration results with predictions.
+    """
     prop = cs["prop"]
     TARGET = cs["TARGET"]
     data_prefix = cs["dataPrefix"]
@@ -355,7 +451,16 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
 
 
 def save_result(args, config, cs, iteration_results, tmp=False):
+    """
+    Saves the results of the current iteration to a file.
 
+    Args:
+        args (argparse.Namespace): Parsed arguments with experiment settings.
+        config (dict): Configuration dictionary.
+        cs (dict): Configuration settings for the dataset.
+        iteration_results (pandas.DataFrame): DataFrame containing predictions and ground truth.
+        tmp (bool): Whether to save as a temporary file.
+    """
     res_dir, _ = get_res_dir(args, config, cs)
 
     res_df_fileName = f"{cs['dataPrefix']}{args.experiment}_{str(config['start_iter'])}_{str(config['num_iter'])}ep{str(config['epoch_num'])}"
@@ -369,6 +474,15 @@ def save_result(args, config, cs, iteration_results, tmp=False):
 
 
 def save_time_log(args, config, cs, start_time):
+    """
+    Logs the total time taken for the PU-SchNet training and testing iterations.
+
+    Args:
+        args (argparse.Namespace): Parsed arguments with experiment settings.
+        config (dict): Configuration dictionary.
+        cs (dict): Configuration settings for the dataset.
+        start_time (float): Start time for tracking total elapsed time.
+    """
     elapsed_time  = time.time() - start_time
     elapsed_days  = int(elapsed_time // (24 * 3600))
     elapsed_hours = int((elapsed_time % (24 * 3600)) // 3600)
@@ -383,7 +497,10 @@ def save_time_log(args, config, cs, start_time):
 
 
 def main():
-
+    """
+    Main function for running PU-SchNet training and prediction. Parses arguments, loads 
+    configurations, initializes data, and runs iterative training and testing.
+    """
     args   = parse_arguments()
     config = load_configuration(args)
     cs     = current_setup(small_data=args.small_data, experiment=args.experiment, ehull015=args.ehull015)

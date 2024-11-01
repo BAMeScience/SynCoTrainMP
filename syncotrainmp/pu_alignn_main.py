@@ -96,7 +96,7 @@ def main():
     synthesizability prediction.
     """
     # Set up command-line argument parsing
-    parser = argparse.ArgumentParser(description="Semi-Supervised ML for Synthesizability Prediction")
+    parser = argparse.ArgumentParser(description="SynCoTrainMP ALIGNN Step")
     parser.add_argument("--experiment", default="alignn0", help="Name of the experiment and corresponding config files.")
     parser.add_argument("--small_data", type=str_to_bool, default=False, help="Select a small subset of data for quicker workflow checks.")
     parser.add_argument("--ehull015", type=str_to_bool, default=False, help="Predict stability to evaluate PU Learning's efficacy with 0.015 eV cutoff.")

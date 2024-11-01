@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 """
 This module prepares data for semi-supervised machine learning in synthesizability prediction.
 It sets up data paths, processes and filters input data, and generates
@@ -23,9 +24,10 @@ import sys
 import argparse
 import numpy as np
 import pandas as pd
-from experiment_setup import current_setup, str_to_bool
 
-# Constants
+from syncotrainmp.experiment_setup import current_setup, str_to_bool
+
+# Constants [TODO: convert to options]
 DATA_DIR = 'data/clean_data/'
 TEST_PORTION = 0.1
 LEAVEOUT_TEST_PORTION = TEST_PORTION * 0.5
@@ -68,6 +70,7 @@ def load_and_prepare_data(data_path, prop, TARGET):
     Returns:
         pd.DataFrame: Cleaned DataFrame ready for train/test splitting.
     """
+    print(f"Reading data from {data_path}.")
     df = pd.read_pickle(data_path)
     df = df[['material_id', prop, TARGET]]
     df = df.loc[:, ~df.columns.duplicated()] # Drops duplicated props at round zero
@@ -102,7 +105,7 @@ def prepare_experiment_data(experiment, small_data, ehull015):
         ehull015 (bool): Whether to use the 0.015 eV cutoff for hull calculations.
     """
     if experiment in {"alignn0", "coAl"}:
-        from pu_alignn.preparing_data_byFile import prepare_alignn_data
+        from syncotrainmp.pu_alignn.preparing_data_byFile import prepare_alignn_data
         alignn_data_log = prepare_alignn_data(small_data=small_data, experiment=experiment, ehull015=ehull015)
         print(alignn_data_log)
 
@@ -205,7 +208,7 @@ def main():
     splits = train_test_split(df, positive_df, leaveout_df, prop, TARGET, num_iter=100, test_ratio=TEST_PORTION)
     save_splits(splits, output_dir)
 
-    print(f"Train/Test splits for {args.experiment} experiment saved in {output_dir}")
+    print(f"Train/Test splits for {args.experiment} experiment saved in {output_dir}.")
 
 if __name__ == "__main__":
     main()

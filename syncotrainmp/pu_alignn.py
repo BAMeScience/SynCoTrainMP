@@ -6,8 +6,9 @@ from jarvis.db.jsonutils import loadjson, dumpjson
 from jarvis.db.jsonutils import loadjson, dumpjson
 import time
 import argparse
-from experiment_setup import current_setup, str_to_bool, str_to_int
-from pu_alignn.alignn_configs.alignn_pu_config import alignn_pu_config_generator
+
+from syncotrainmp.experiment_setup import current_setup, str_to_bool, str_to_int
+from syncotrainmp.pu_alignn.alignn_configs.alignn_pu_config import alignn_pu_config_generator
 # %%
 # make sure to run pu_data_selection again with the correct labels before running cotraining.
 # HARD CODING FOR STARTING AT OTERATION 45!

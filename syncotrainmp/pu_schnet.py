@@ -3,7 +3,8 @@ import os
 from pathlib import Path 
 import sys
 import argparse
-from experiment_setup import current_setup, str_to_bool
+
+from syncotrainmp.experiment_setup import current_setup, str_to_bool
 
 parser = argparse.ArgumentParser(
     description="Semi-Supervised ML for Synthesizability Prediction"
@@ -56,9 +57,9 @@ import torchmetrics
 import pytorch_lightning as pl
 import json
 import pandas as pd
-import pu_schnet.pu_learn.int2metric as int2metric
-from pu_schnet.pu_learn.Datamodule4PU import *
-from pu_schnet.pu_learn.schnet_funcs  import directory_setup, predProb
+import syncotrainmp.pu_schnet.pu_learn.int2metric as int2metric
+from syncotrainmp.pu_schnet.pu_learn.Datamodule4PU import *
+from syncotrainmp.pu_schnet.pu_learn.schnet_funcs  import directory_setup, predProb
 import time
 from pytorch_lightning.callbacks import EarlyStopping
 

@@ -96,15 +96,17 @@ def create_model(prop, cutoff=5, n_rbf=30, n_atom_basis=64, n_filters=64, n_inte
         }
     )
 
-    scheduler = {'scheduler_cls':torch.optim.lr_scheduler.ReduceLROnPlateau,
-                 'scheduler_args':{"mode": "max", #mode is min for loss, max for merit
-                               "factor": 0.5,
-                               "patience": 15,
-                               "threshold": 0.01,
-                               "min_lr": 1e-6
-                               },
-                 'scheduler_monitor':f"val_{prop}_Accuracy"
-                }
+    scheduler = {
+        'scheduler_cls':torch.optim.lr_scheduler.ReduceLROnPlateau,
+        'scheduler_args':{
+            "mode"     : "max", #mode is min for loss, max for merit
+            "factor"   : 0.5,
+            "patience" : 15,
+            "threshold": 0.01,
+            "min_lr"   : 1e-6
+        },
+        'scheduler_monitor': f"val_{prop}_Accuracy"
+    }
 
     task = spk.task.AtomisticTask(
         model=nnpot,
@@ -181,10 +183,8 @@ def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, spl
     it_testdf.reset_index(drop=True, inplace=True)
     
     if it==1:
-        print('The #training data is {}, #validation data {} and #internal test data {}. '.format(trainLength, valLength, innerTestLength))
-        print(f"The total number of test-set (predictions) is {testLength}, out of which {unlabeledPredictionLength} are unlabeled\
- and {positivePredictionLength} are labeled positive.")
-
+        print(f"The #training data is {trainLength}, #validation data {valLength} and #internal test data {innerTestLength}.")
+        print(f"The total number of test-set (predictions) is {testLength}, out of which {unlabeledPredictionLength} are unlabeled and {positivePredictionLength} are labeled positive.")
 
     class_dataset = ASEAtomsData.create(trainDataPath, 
                         distance_unit='Ang',
@@ -194,18 +194,18 @@ def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, spl
     class_dataset.add_systems(np.array(it_traindf.targets), np.array(it_traindf.atoms))
     print('creating data module')
     crysData = AtomsDataModule(datapath=trainDataPath,
-                   batch_size=config["batch_size"],
-                    num_train=trainLength,
-                    num_val=valLength,
-                    transforms=[
-                        trn.ASENeighborList(cutoff=float(cutoff)),
-                        trn.CastTo32(), 
-                                ],
-                    property_units={prop:int(1)},
-                    num_workers=4,    
-                    split_file = splitFilestring, 
-                    pin_memory=True, # set to false, when not using a GPU
-                    load_properties=[prop], 
+        batch_size=config["batch_size"],
+        num_train=trainLength,
+        num_val=valLength,
+        transforms=[
+            trn.ASENeighborList(cutoff=float(cutoff)),
+            trn.CastTo32(), 
+        ],
+        property_units={prop:int(1)},
+        num_workers=4,    
+        split_file = splitFilestring, 
+        pin_memory=True, # set to false, when not using a GPU
+        load_properties=[prop], 
     )
     
     crysData.prepare_data()
@@ -227,20 +227,20 @@ def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, spl
     print('creating data module')
 
     crysTest = DataModuleWithPred(
-                    datapath=testDatapath,
-                    batch_size=config["batch_size"],
-                    num_train=0,
-                    num_val=0, 
-                    num_test=len(it_testdf),
-                    transforms=[
-                        trn.ASENeighborList(cutoff=float(cutoff)),
-                        trn.CastTo32(), 
-                                ],
-                    property_units={prop:int(1)},
-                    num_workers=4,
-                    split_file = splitFilestringTest, 
-                    pin_memory=True, # set to false, when not using a GPU
-                    load_properties=[prop], 
+        datapath=testDatapath,
+        batch_size=config["batch_size"],
+        num_train=0,
+        num_val=0, 
+        num_test=len(it_testdf),
+        transforms=[
+            trn.ASENeighborList(cutoff=float(cutoff)),
+            trn.CastTo32(), 
+        ],
+        property_units={prop:int(1)},
+        num_workers=4,
+        split_file = splitFilestringTest, 
+        pin_memory=True, # set to false, when not using a GPU
+        load_properties=[prop], 
     )
 
     crysTest.prepare_data()
@@ -270,11 +270,16 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     trainDataPath = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_train_dataset.db")
     bestModelPath = os.path.join(save_it_dir,'best_inference_model')
 
-    splitFilestring = directory_setup(res_dir = res_dir, 
-                                      dataPath = trainDataPath, save_dir = save_it_dir,
-                                      bestModelPath= bestModelPath,)# iteration_num=it)
+    splitFilestring = directory_setup(
+        res_dir = res_dir, 
+        dataPath = trainDataPath,
+        save_dir = save_it_dir,
+        bestModelPath= bestModelPath,
+    )# iteration_num=it)
 
-    crysData, crysTest = get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff)
+    crysData, crysTest = get_test_train_data(
+        it, config, cs, crysdf, trainDataPath, testDatapath,
+        splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff)
 
     means, stddevs = crysData.get_stats(
         prop, divide_by_atoms=True, remove_atomref=True)
@@ -287,9 +292,11 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     trainer = create_trainer(config, cs, save_dir, save_it_dir)
     trainer.fit(model, datamodule=crysData)
 
-    predictions = trainer.predict(model=model,
-                    dataloaders= crysTest.predict_dataloader(),
-                    return_predictions=True)
+    predictions = trainer.predict(
+        model=model,
+        dataloaders= crysTest.predict_dataloader(),
+        return_predictions=True
+    )
 
     results = []
     for batch in predictions:    
@@ -306,10 +313,14 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     resdf = resdf.set_index('testIndex').sort_index() 
         
     it_testdf = it_testdf[['material_id']] 
-    it_testdf = it_testdf.merge(resdf['pred_'+str(it)],
-                                left_index=True, right_index=True)
-    iteration_results = iteration_results.merge(it_testdf,
-                            left_on='material_id', right_on='material_id', how='outer')
+    it_testdf = it_testdf.merge(resdf['pred_'+str(it)], left_index=True, right_index=True)
+
+    iteration_results = iteration_results.merge(
+        it_testdf,
+        left_on='material_id',
+        right_on='material_id',
+        how='outer'
+    )
     
     try:
         os.remove(testDatapath)

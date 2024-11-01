@@ -107,6 +107,39 @@ def create_model(prop, cutoff=5, n_rbf=30, n_atom_basis=64, n_filters=64, n_inte
 
     return task
 
+
+def create_trainer(config, cs, save_dir, save_it_dir):
+
+    # This doesn't work when no test data is given.
+    early_stopping = EarlyStopping(
+        verbose=2,
+        mode= 'max', #min for loss, max for merit.
+        monitor=f"val_{cs["prop"]}_Accuracy",  #if it works, also change in ModelCheckpoint?
+        min_delta=0.02,
+        patience=30,
+    )
+    model_checkpoint = spk.train.ModelCheckpoint(
+        inference_path=os.path.join(save_it_dir, "best_inference_model"),
+        save_top_k=1,
+        monitor=f"val_{cs["prop"]}_Accuracy"
+    )
+
+    logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        gpus=1,
+        auto_select_gpus = True,
+        strategy=None,
+        precision=16,
+        callbacks=[early_stopping, model_checkpoint],
+        logger=logger,
+        default_root_dir=save_it_dir,
+        max_epochs=config["epoch_num"],
+    )
+
+    return trainer
+
+
 def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
 
     prop = cs["prop"]
@@ -146,13 +179,13 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     
     valLength = int(len(it_traindf)*.1)-5
     trainLength = int(len(it_traindf)*.9)-5 
-    innerTestLength = len(it_traindf)-(trainLength+valLength)   #Fatal error without internal test set.
+    innerTestLength = len(it_traindf)-(trainLength+valLength) # Fatal error without internal test set.
     
     positivePredictionLength = it_testdf[TARGET].sum()
     unlabeledPredictionLength = len(it_testdf)-positivePredictionLength
     testLength = len(it_testdf)
 
-    it_traindf = it_traindf.sample(frac=1,random_state=it, ignore_index=True) #shuffling for each iteration.
+    it_traindf = it_traindf.sample(frac=1,random_state=it, ignore_index=True) # Shuffling for each iteration.
     it_traindf.reset_index(drop=True, inplace=True)
     it_testdf.reset_index(drop=True, inplace=True)
     
@@ -162,11 +195,11 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
  and {positivePredictionLength} are labeled positive.")
 
     class_dataset = ASEAtomsData.create(trainDataPath, 
-                                    distance_unit='Ang',
-                                    property_unit_dict={prop:int(1)}     #The unit is int(1); aka unitless.                             
-                                     )
+                        distance_unit='Ang',
+                        property_unit_dict={prop:int(1)} # The unit is int(1); aka unitless.
+    )
     print('adding systems to dataset')
-    class_dataset.add_systems(np.array(it_traindf.targets), np.array(it_traindf.atoms))  
+    class_dataset.add_systems(np.array(it_traindf.targets), np.array(it_traindf.atoms))
     print('creating data module')
     crysData = AtomsDataModule(datapath=trainDataPath,
                    batch_size=config["batch_size"],
@@ -226,38 +259,12 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     print('Mean atomization energy / atom:', means.item())
     print('Std. dev. atomization energy / atom:', stddevs.item())
 
-    # This doesn't work when no test data is given.    
-    early_stopping = EarlyStopping(
-        verbose=2,
-        mode= 'max', #min for loss, max for merit.
-        monitor=f"val_{prop}_Accuracy",  #if it works, also change in ModelCheckpoint?
-        min_delta=0.02,
-        patience=30,
-    )
-    model_checkpoint = spk.train.ModelCheckpoint(
-        inference_path=os.path.join(save_it_dir, "best_inference_model"),
-        save_top_k=1,
-        monitor=f"val_{prop}_Accuracy"
-    )
+    model = create_model(prop, cutoff=cutoff)
 
-    logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)       
-    trainer = pl.Trainer(
-        accelerator='gpu',
-        gpus=1,
-        auto_select_gpus = True,
-        strategy=None, 
-        precision=16,
-        callbacks=[early_stopping, model_checkpoint],
-        logger=logger,
-        default_root_dir=save_it_dir, 
-        max_epochs=config["epoch_num"], 
-    )
+    trainer = create_trainer(config, cs, save_dir, save_it_dir)
+    trainer.fit(model, datamodule=crysData)
 
-    task = create_model(prop)
-
-    trainer.fit(task, datamodule=crysData)
-
-    predictions = trainer.predict(model=task, 
+    predictions = trainer.predict(model=model,
                     dataloaders= crysTest.predict_dataloader(),
                     return_predictions=True)
 

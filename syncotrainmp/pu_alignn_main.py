@@ -9,7 +9,7 @@ from syncotrainmp.experiment_setup import current_setup, str_to_bool, str_to_int
 from syncotrainmp.pu_alignn.alignn_setup import *
 from syncotrainmp.pu_alignn.alignn_configs.alignn_pu_config import alignn_pu_config_generator
 
-def config_generator(newConfigName, iterNum=3, epochNum=10, class_config='pu_alignn/alignn_configs/default_class_config.json', alignn_dir='pu_alignn', ehull015=False, experiment=None):
+def config_generator(newConfigName, iterNum=3, epochNum=10, class_config='syncotrainmp/pu_alignn/alignn_configs/default_class_config.json', alignn_dir='pu_alignn', ehull015=False, experiment=None):
     """
     Generates a configuration file for the training process based on specified parameters.
     

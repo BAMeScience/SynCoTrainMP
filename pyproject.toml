@@ -21,8 +21,8 @@ classifiers = [
 
 [project.scripts]
 syncotrainmp_data_selection = "syncotrainmp.data_selection:main"
-syncotrainmp_pu_alignn = "syncotrainmp.pu_alignn:main"
-syncotrainmp_pu_schnet = "syncotrainmp.pu_schnet:main"
+syncotrainmp_pu_alignn = "syncotrainmp.pu_alignn_main:main"
+syncotrainmp_pu_schnet = "syncotrainmp.pu_schnet_main:main"
 
 [tool.setuptools.packages.find]
 where = ["syncotrainmp"]

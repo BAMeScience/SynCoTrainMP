@@ -34,8 +34,10 @@ def parse_arguments():
     parser.add_argument("--gpu_id", type=int, default=3, help="GPU ID to use for training.")
     return parser.parse_args()
 
+
 def initialize_environment(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
+
 
 def load_configuration(args, config_path='syncotrainmp/pu_schnet/schnet_configs/pu_config_schnetpack.json'):
     with open(config_path, "r") as read_file:
@@ -45,35 +47,21 @@ def load_configuration(args, config_path='syncotrainmp/pu_schnet/schnet_configs/
 
     return config
 
-def run_iteration(it, args, config, cs, crysdf, start_time):
 
-    prop = cs["prop"]
-    TARGET = cs["TARGET"]
-    data_prefix = cs["dataPrefix"]
+def get_res_dir(args, config, cs):
+    save_dir = os.path.join(config["schnetDirectory"], f'PUOutput_{cs["dataPrefix"]}{args.experiment}')
+    if args.ehull015:
+        save_dir = os.path.join(config["schnetDirectory"], f'PUehull015_{args.experiment}')
+    res_dir = os.path.join(save_dir,'res_df')
 
-    print('we started iteration {}'.format(it))
-    np.random.seed(it) 
-    # scheduler = {'scheduler_cls':None,'scheduler_args':None}
-    scheduler = {'scheduler_cls':torch.optim.lr_scheduler.ReduceLROnPlateau,
-                 'scheduler_args':{"mode": "max", #mode is min for loss, max for merit
-                               "factor": 0.5,
-                               "patience": 15,
-                               "threshold": 0.01,
-                               "min_lr": 1e-6
-                               },
-                 'scheduler_monitor':f"val_{prop}_Accuracy"
-                }
+    return res_dir, save_dir
 
-    save_it_dir = os.path.join(save_dir, f'iter_{it}')
-    dataDir = os.path.join(save_it_dir,"schnetDatabases")
-    
 
-    testDatapath  = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_test_dataset.db")
-    trainDataPath = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_train_dataset.db")
-    bestModelPath = os.path.join(save_it_dir,'best_inference_model')
-    
-    pairwise_distance = spk.atomistic.PairwiseDistances() # calculates pairwise distances between atoms
-    radial_basis = spk.nn.GaussianRBF(n_rbf=n_rbf, cutoff=cutoff) # for 0.1 Ang distance
+def create_model(prop, cutoff=5, n_rbf=30, n_atom_basis=64, n_filters=64, n_interactions=3, lr=1e-3):
+
+    pairwise_distance = spk.atomistic.PairwiseDistances()
+    radial_basis = spk.nn.GaussianRBF(n_rbf=n_rbf, cutoff=cutoff)
+
     schnet = spk.representation.SchNet(
         n_atom_basis=n_atom_basis, n_filters=n_filters, n_interactions=n_interactions, radial_basis=radial_basis,    
         cutoff_fn = spk.nn.CosineCutoff(cutoff),
@@ -92,40 +80,69 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
         loss_fn=torch.nn.BCEWithLogitsLoss(), 
         loss_weight=1.,
         metrics={
-            "Accuracy": torchmetrics.Accuracy("binary"),   #potential alternatives: AUROC(increases the area under ROC curve), AveragePrecision (summarises the precision-recall curve)
-            "recalll": torchmetrics.Recall("binary")   #potential alternatives: AUROC(increases the area under ROC curve), AveragePrecision (summarises the precision-recall curve)
+            "Accuracy": torchmetrics.Accuracy("binary"),
+            "recalll" : torchmetrics.Recall  ("binary")
         }
     )
+
+    scheduler = {'scheduler_cls':torch.optim.lr_scheduler.ReduceLROnPlateau,
+                 'scheduler_args':{"mode": "max", #mode is min for loss, max for merit
+                               "factor": 0.5,
+                               "patience": 15,
+                               "threshold": 0.01,
+                               "min_lr": 1e-6
+                               },
+                 'scheduler_monitor':f"val_{prop}_Accuracy"
+                }
 
     task = spk.task.AtomisticTask(
         model=nnpot,
         outputs=[output_prop],
         optimizer_cls=torch.optim.AdamW,
-        optimizer_args={"lr": lr}, #based on their supplemet info for materials project
+        optimizer_args={"lr": lr},
         scheduler_monitor=scheduler['scheduler_monitor'],
         scheduler_cls=scheduler['scheduler_cls'],
         scheduler_args=scheduler['scheduler_args'],
     )
-    
+
+    return task
+
+def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
+
+    prop = cs["prop"]
+    TARGET = cs["TARGET"]
+    data_prefix = cs["dataPrefix"]
+
+    split_id_dir = f"{data_prefix}{TARGET}_{prop}"
+    split_id_dir_path = os.path.join(config["data_dir"], split_id_dir)        
+
+    res_dir, save_dir = get_res_dir(args, config, cs)
+
+    print('we started iteration {}'.format(it))
+    np.random.seed(it) 
+
+    save_it_dir = os.path.join(save_dir, f'iter_{it}')
+    dataDir = os.path.join(save_it_dir,"schnetDatabases")
+
+    testDatapath  = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_test_dataset.db")
+    trainDataPath = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_train_dataset.db")
+    bestModelPath = os.path.join(save_it_dir,'best_inference_model')
+
     splitFilestring = directory_setup(res_dir = res_dir, 
                                       dataPath = trainDataPath, save_dir = save_it_dir,
                                       bestModelPath= bestModelPath,)# iteration_num=it)
-    
+
     train_id_path = os.path.join(split_id_dir_path, f'train_id_{it}.txt')
-    test_id_path = os.path.join(split_id_dir_path, f'test_id_{it}.txt')
-    experimentalDataSize_path = os.path.join(split_id_dir_path, 'experimentalDataSize.txt')
+    test_id_path  = os.path.join(split_id_dir_path, f'test_id_{it}.txt')
+
     with open(train_id_path, "r") as f:
         id_val_train = [int(line.strip()) for line in f]
-    
+
     with open(test_id_path, "r") as f2:
         id_test = [int(line.strip()) for line in f2]
-        
-    with open(experimentalDataSize_path, "r") as f3:
-        experimentalDataSize = [int(float(line.strip())) for line in f3][0]        
-    
+
     it_traindf = crysdf.loc[id_val_train]
     it_testdf = crysdf.loc[id_test]
-    total_data_length = len(it_testdf)+len(it_traindf)
     
     valLength = int(len(it_traindf)*.1)-5
     trainLength = int(len(it_traindf)*.9)-5 
@@ -152,7 +169,7 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
     class_dataset.add_systems(np.array(it_traindf.targets), np.array(it_traindf.atoms))  
     print('creating data module')
     crysData = AtomsDataModule(datapath=trainDataPath,
-                   batch_size=batch_size,
+                   batch_size=config["batch_size"],
                     num_train=trainLength,
                     num_val=valLength,
                     transforms=[
@@ -185,7 +202,7 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
 
     crysTest = DataModuleWithPred(
                     datapath=testDatapath,
-                    batch_size=batch_size,
+                    batch_size=config["batch_size"],
                     num_train=0,
                     num_val=0, 
                     num_test=len(it_testdf),
@@ -198,53 +215,48 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
                     split_file = splitFilestringTest, 
                     pin_memory=True, # set to false, when not using a GPU
                     load_properties=[prop], 
-                                )
+    )
 
     crysTest.prepare_data()
     crysTest.setup("test")
-    
+
     means, stddevs = crysData.get_stats(
     prop, divide_by_atoms=True, remove_atomref=True)
-    
-    meansTest, stddevsTest = crysTest.get_stats(
-    prop, divide_by_atoms=True, remove_atomref=True,
-    mode = 'test')
-    
+
     print('Mean atomization energy / atom:', means.item())
     print('Std. dev. atomization energy / atom:', stddevs.item())
+
     # This doesn't work when no test data is given.    
     early_stopping = EarlyStopping(
-    verbose=2,
-    mode= 'max', #min for loss, max for merit.
-    monitor=f"val_{prop}_Accuracy",  #if it works, also change in ModelCheckpoint?
-    min_delta=0.02,
-    patience=30,
-)    
-    logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)
-    callbacks = [
-        early_stopping,
-    spk.train.ModelCheckpoint(
+        verbose=2,
+        mode= 'max', #min for loss, max for merit.
+        monitor=f"val_{prop}_Accuracy",  #if it works, also change in ModelCheckpoint?
+        min_delta=0.02,
+        patience=30,
+    )
+    model_checkpoint = spk.train.ModelCheckpoint(
         inference_path=os.path.join(save_it_dir, "best_inference_model"),
         save_top_k=1,
         monitor=f"val_{prop}_Accuracy"
     )
-    ]
-       
+
+    logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)       
     trainer = pl.Trainer(
-    accelerator='gpu',
-    gpus=1,
-    auto_select_gpus = True,
-    strategy=None, 
-    precision=16,
-    callbacks=callbacks,
-    logger=logger,
-    default_root_dir=save_it_dir, 
-    max_epochs=epoch_num, 
+        accelerator='gpu',
+        gpus=1,
+        auto_select_gpus = True,
+        strategy=None, 
+        precision=16,
+        callbacks=[early_stopping, model_checkpoint],
+        logger=logger,
+        default_root_dir=save_it_dir, 
+        max_epochs=config["epoch_num"], 
     )
 
+    task = create_model(prop)
+
     trainer.fit(task, datamodule=crysData)
-    
-    
+
     predictions = trainer.predict(model=task, 
                     dataloaders= crysTest.predict_dataloader(),
                     return_predictions=True)
@@ -275,22 +287,22 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
         print("File removed successfully!")
     except Exception as e:
         print("An error occurred:", str(e))
-        
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    
+
     print("===the {}th iteration is done.".format(it))
-    iteration_results.to_pickle(os.path.join(res_dir,res_df_fileName+'tmp'))   #overwriting results at each iteration
+    iteration_results.to_pickle(os.path.join(res_dir, res_df_fileName+'tmp'))
     elapsed_time = time.time() - start_time
-    remaining_iterations = num_iter - it - 1
-    time_per_iteration = elapsed_time / (it - start_iter + 1)
+    remaining_iterations = config["num_iter"] - it - 1
+    time_per_iteration = elapsed_time / (it - config["start_iter"] + 1)
     estimated_remaining_time = remaining_iterations * time_per_iteration
     remaining_days = int(estimated_remaining_time // (24 * 3600))
     remaining_hours = int((estimated_remaining_time % (24 * 3600)) // 3600)
-    
-    time_log_path = os.path.join('time_logs',f'schnet_remaining_time_{data_prefix}{experiment}_{prop}.txt')
+
+    time_log_path = os.path.join('time_logs',f'schnet_remaining_time_{data_prefix}{args.experiment}_{prop}.txt')
     with open(time_log_path, 'w') as file:
-        file.write(f"Iterations completed: {it - start_iter}\n")
+        file.write(f"Iterations completed: {it - config["start_iter"]}\n")
         file.write(f"Iterations remaining: {remaining_iterations}\n")
         file.write(f"Estimated remaining time: {remaining_days} days, {remaining_hours} hours\n")
 
@@ -301,9 +313,11 @@ def run_iteration(it, args, config, cs, crysdf, start_time):
 
 def save_result(args, config, cs, iteration_results):
 
+    res_dir, _ = get_res_dir(args, config, cs)
+
     res_df_fileName = f'{cs["dataPrefix"]}{args.experiment}_{str(config["start_iter"])}_{str(config["num_iter"])}ep{str(config["epoch_num"])}'
 
-    iteration_results.to_pickle(os.path.join(cs["res_dir"], res_df_fileName))
+    iteration_results.to_pickle(os.path.join(res_dir, res_df_fileName))
 
     print(f"Saved PU-SchNet results to: {res_df_fileName}")
 
@@ -327,7 +341,7 @@ def main():
     args   = parse_arguments()
     config = load_configuration(args)
     cs     = current_setup(small_data=args.small_data, experiment=args.experiment, ehull015=args.ehull015)
-    crysdf = pd.read_pickle(cs["propDFpath"]) 
+    crysdf = pd.read_pickle(cs["propDFpath"])
 
     initialize_environment()
 

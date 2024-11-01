@@ -17,10 +17,9 @@ from schnetpack import transform as trn
 from schnetpack.data import ASEAtomsData, AtomsDataModule
 
 from syncotrainmp.experiment_setup import current_setup, str_to_bool
-from syncotrainmp.pu_schnet.pu_learn.int2metric import ModelOutput4ACC
 from syncotrainmp.pu_schnet.pu_learn.schnet_funcs import directory_setup, predProb
 from syncotrainmp.pu_schnet.pu_learn.Datamodule4PU import DataModuleWithPred
-from syncotrainmp.pu_schnet.pu_learn.int2metric import int2metric
+from syncotrainmp.pu_schnet.pu_learn import int2metric
 
 
 def parse_arguments():
@@ -114,14 +113,14 @@ def create_trainer(config, cs, save_dir, save_it_dir):
     early_stopping = EarlyStopping(
         verbose=2,
         mode= 'max', #min for loss, max for merit.
-        monitor=f"val_{cs["prop"]}_Accuracy",  #if it works, also change in ModelCheckpoint?
+        monitor=f"val_{cs['prop']}_Accuracy",  #if it works, also change in ModelCheckpoint?
         min_delta=0.02,
         patience=30,
     )
     model_checkpoint = spk.train.ModelCheckpoint(
         inference_path=os.path.join(save_it_dir, "best_inference_model"),
         save_top_k=1,
-        monitor=f"val_{cs["prop"]}_Accuracy"
+        monitor=f"val_{cs['prop']}_Accuracy"
     )
 
     logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)
@@ -140,7 +139,7 @@ def create_trainer(config, cs, save_dir, save_it_dir):
     return trainer
 
 
-def get_crys_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff):
+def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff):
 
     prop = cs["prop"]
     TARGET = cs["TARGET"]
@@ -263,10 +262,10 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
                                       dataPath = trainDataPath, save_dir = save_it_dir,
                                       bestModelPath= bestModelPath,)# iteration_num=it)
 
-    crysData, crysTest = get_crys_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff)
+    crysData, crysTest = get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff)
 
     means, stddevs = crysData.get_stats(
-    prop, divide_by_atoms=True, remove_atomref=True)
+        prop, divide_by_atoms=True, remove_atomref=True)
 
     print('Mean atomization energy / atom:', means.item())
     print('Std. dev. atomization energy / atom:', stddevs.item())
@@ -311,7 +310,9 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
         torch.cuda.empty_cache()
 
     print("===the {}th iteration is done.".format(it))
-    iteration_results.to_pickle(os.path.join(res_dir, res_df_fileName+'tmp'))
+
+    save_result(args, config, cs, iteration_results, tmp=True)
+
     elapsed_time = time.time() - start_time
     remaining_iterations = config["num_iter"] - it - 1
     time_per_iteration = elapsed_time / (it - config["start_iter"] + 1)
@@ -321,7 +322,7 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
 
     time_log_path = os.path.join('time_logs',f'schnet_remaining_time_{data_prefix}{args.experiment}_{prop}.txt')
     with open(time_log_path, 'w') as file:
-        file.write(f"Iterations completed: {it - config["start_iter"]}\n")
+        file.write(f"Iterations completed: {it - config['start_iter']}\n")
         file.write(f"Iterations remaining: {remaining_iterations}\n")
         file.write(f"Estimated remaining time: {remaining_days} days, {remaining_hours} hours\n")
 
@@ -330,11 +331,14 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     return iteration_results
 
 
-def save_result(args, config, cs, iteration_results):
+def save_result(args, config, cs, iteration_results, tmp=False):
 
     res_dir, _ = get_res_dir(args, config, cs)
 
-    res_df_fileName = f'{cs["dataPrefix"]}{args.experiment}_{str(config["start_iter"])}_{str(config["num_iter"])}ep{str(config["epoch_num"])}'
+    res_df_fileName = f"{cs['dataPrefix']}{args.experiment}_{str(config['start_iter'])}_{str(config['num_iter'])}ep{str(config['epoch_num'])}"
+
+    if tmp:
+        res_df_fileName = res_df_fileName+'tmp'
 
     iteration_results.to_pickle(os.path.join(res_dir, res_df_fileName))
 
@@ -349,7 +353,7 @@ def save_time_log(args, config, cs, start_time):
     time_log_path = os.path.join('time_logs',f'schnet_remaining_time_{cs["dataPrefix"]}{args.experiment}_{cs["prop"]}.txt')
 
     with open(time_log_path, 'w') as file:
-        file.write(f"Iterations completed: {config["num_iter"] - config["start_iter"]}\n")
+        file.write(f"Iterations completed: {config['num_iter'] - config['start_iter']}\n")
         file.write(f"Total time taken: {elapsed_days} days, {elapsed_hours} hours\n")
 
     print(f"PU Learning completed. Total time taken: {elapsed_days} days, {elapsed_hours} hours")
@@ -362,7 +366,7 @@ def main():
     cs     = current_setup(small_data=args.small_data, experiment=args.experiment, ehull015=args.ehull015)
     crysdf = pd.read_pickle(cs["propDFpath"])
 
-    initialize_environment()
+    initialize_environment(args)
 
     start_time = time.time()
     for it in range(config["start_iter"], config["num_iter"]):

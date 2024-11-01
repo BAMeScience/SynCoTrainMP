@@ -1,17 +1,16 @@
 
 import os
-import sys
 import json
 import time
 import torch
 import numpy as np
 import pandas as pd
 import argparse
-import pytorch_lightning as pl
 import torchmetrics
 
-from torch import nn
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
+
 import schnetpack as spk
 from schnetpack import transform as trn
 from schnetpack.data import ASEAtomsData, AtomsDataModule
@@ -45,6 +44,19 @@ def load_configuration(args, config_path='syncotrainmp/pu_schnet/schnet_configs/
     config["start_iter"] = args.startIt
 
     return config
+
+
+def load_crysdf(cs):
+
+    prop = cs["prop"]
+    TARGET = cs["TARGET"]
+
+    crysdf = pd.read_pickle(cs["propDFpath"])
+    crysdf["targets"] = crysdf[TARGET].map(lambda target: np.array(target).flatten())
+    # We need the array to have the shape (1,), hence we use flatten()
+    crysdf["targets"] = crysdf.targets.map(lambda target: {prop: np.array(target)})  
+
+    return crysdf
 
 
 def get_res_dir(args, config, cs):
@@ -204,11 +216,11 @@ def get_test_train_data(it, config, cs, crysdf, trainDataPath, testDatapath, spl
                                           bestModelPath= bestModelPath,
     ) # iteration_num=it)
 
-    test_dataset = ASEAtomsData.create(testDatapath, 
-                                    distance_unit='Ang',
-                                    property_unit_dict={
-                                        prop:int(1),
-                                        })
+    test_dataset = ASEAtomsData.create(
+        testDatapath, 
+        distance_unit='Ang',
+        property_unit_dict={prop:int(1)},
+    )
     print('adding systems to the test dataset')
     test_dataset.add_systems(np.array(it_testdf.targets), np.array(it_testdf.atoms))  
 
@@ -364,7 +376,7 @@ def main():
     args   = parse_arguments()
     config = load_configuration(args)
     cs     = current_setup(small_data=args.small_data, experiment=args.experiment, ehull015=args.ehull015)
-    crysdf = pd.read_pickle(cs["propDFpath"])
+    crysdf = load_crysdf(cs)
 
     initialize_environment(args)
 

@@ -140,30 +140,10 @@ def create_trainer(config, cs, save_dir, save_it_dir):
     return trainer
 
 
-def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
+def get_crys_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff):
 
     prop = cs["prop"]
     TARGET = cs["TARGET"]
-    data_prefix = cs["dataPrefix"]
-
-    split_id_dir = f"{data_prefix}{TARGET}_{prop}"
-    split_id_dir_path = os.path.join(config["data_dir"], split_id_dir)        
-
-    res_dir, save_dir = get_res_dir(args, config, cs)
-
-    print('we started iteration {}'.format(it))
-    np.random.seed(it) 
-
-    save_it_dir = os.path.join(save_dir, f'iter_{it}')
-    dataDir = os.path.join(save_it_dir,"schnetDatabases")
-
-    testDatapath  = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_test_dataset.db")
-    trainDataPath = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_train_dataset.db")
-    bestModelPath = os.path.join(save_it_dir,'best_inference_model')
-
-    splitFilestring = directory_setup(res_dir = res_dir, 
-                                      dataPath = trainDataPath, save_dir = save_it_dir,
-                                      bestModelPath= bestModelPath,)# iteration_num=it)
 
     train_id_path = os.path.join(split_id_dir_path, f'train_id_{it}.txt')
     test_id_path  = os.path.join(split_id_dir_path, f'test_id_{it}.txt')
@@ -175,10 +155,10 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
         id_test = [int(line.strip()) for line in f2]
 
     it_traindf = crysdf.loc[id_val_train]
-    it_testdf = crysdf.loc[id_test]
+    it_testdf  = crysdf.loc[id_test]
     
-    valLength = int(len(it_traindf)*.1)-5
-    trainLength = int(len(it_traindf)*.9)-5 
+    valLength       = int(len(it_traindf)*.1)-5
+    trainLength     = int(len(it_traindf)*.9)-5 
     innerTestLength = len(it_traindf)-(trainLength+valLength) # Fatal error without internal test set.
     
     positivePredictionLength = it_testdf[TARGET].sum()
@@ -193,6 +173,7 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
         print('The #training data is {}, #validation data {} and #internal test data {}. '.format(trainLength, valLength, innerTestLength))
         print(f"The total number of test-set (predictions) is {testLength}, out of which {unlabeledPredictionLength} are unlabeled\
  and {positivePredictionLength} are labeled positive.")
+
 
     class_dataset = ASEAtomsData.create(trainDataPath, 
                         distance_unit='Ang',
@@ -221,7 +202,8 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
     
     splitFilestringTest = directory_setup(res_dir = res_dir, 
                                           dataPath = testDatapath,save_dir = save_it_dir, 
-                                          bestModelPath= bestModelPath,)# iteration_num=it)
+                                          bestModelPath= bestModelPath,
+    ) # iteration_num=it)
 
     test_dataset = ASEAtomsData.create(testDatapath, 
                                     distance_unit='Ang',
@@ -252,6 +234,36 @@ def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
 
     crysTest.prepare_data()
     crysTest.setup("test")
+
+    return crysData, crysTest
+
+
+def run_iteration(it, args, config, cs, crysdf, start_time, cutoff = 5):
+
+    prop = cs["prop"]
+    TARGET = cs["TARGET"]
+    data_prefix = cs["dataPrefix"]
+
+    split_id_dir = f"{data_prefix}{TARGET}_{prop}"
+    split_id_dir_path = os.path.join(config["data_dir"], split_id_dir)        
+
+    res_dir, save_dir = get_res_dir(args, config, cs)
+
+    print('we started iteration {}'.format(it))
+    np.random.seed(it) 
+
+    save_it_dir = os.path.join(save_dir, f'iter_{it}')
+    dataDir = os.path.join(save_it_dir,"schnetDatabases")
+
+    testDatapath  = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_test_dataset.db")
+    trainDataPath = os.path.join(dataDir,f"{data_prefix}{args.experiment}_{prop}_train_dataset.db")
+    bestModelPath = os.path.join(save_it_dir,'best_inference_model')
+
+    splitFilestring = directory_setup(res_dir = res_dir, 
+                                      dataPath = trainDataPath, save_dir = save_it_dir,
+                                      bestModelPath= bestModelPath,)# iteration_num=it)
+
+    crysData, crysTest = get_crys_data(it, config, cs, crysdf, trainDataPath, testDatapath, splitFilestring, split_id_dir_path, res_dir, save_it_dir, bestModelPath, cutoff)
 
     means, stddevs = crysData.get_stats(
     prop, divide_by_atoms=True, remove_atomref=True)
